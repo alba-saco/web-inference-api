@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const mime = require('mime-types');
 
 const app = express();
 const port = 3000;
@@ -66,16 +67,29 @@ app.get('/check-processing-status/:fileId', (req, res) => {
 });
 
 app.post('/process-data/:fileId', (req, res) => {
+    let fileId;
     try {
-        const fileId = req.params.fileId;
+        fileId = req.params.fileId;
         processedData = req.body.processedData;
 
+        if (!processedData) {
+            console.error('Invalid processedData');
+            throw new Error('Invalid processedData');
+        }
+
         console.log(`Received processed data from the client for fileId ${fileId}`);
+
+        const originalExtension = processedDataMap[fileId]?.originalExtension;
+
+        if (!originalExtension) {
+            console.error(`Original extension not found for fileId ${fileId}`);
+            throw new Error('Original extension not found');
+        }
 
         processedDataMap[fileId] = processedData;
         processingStatus[fileId] = 'processed';
 
-        const filePath = path.join(fileStoragePath, `${fileId}.wav`);
+        const filePath = path.join(fileStoragePath, `${fileId}${originalExtension}`);
         fs.unlinkSync(filePath);
 
         console.log('File deleted after processing:', fileId);
@@ -83,7 +97,9 @@ app.post('/process-data/:fileId', (req, res) => {
         res.status(200).json({ success: true });
     } catch (error) {
         console.error('Error handling processed data:', error);
-        processingStatus[fileId] = 'error';
+        if (fileId) {
+            processingStatus[fileId] = 'error';
+        }
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
@@ -102,9 +118,12 @@ app.get('/get-processed-data/:fileId', (req, res) => {
 
 app.post('/upload', upload.single('file'), (req, res) => {
     try {
+        console.log("upload endpoint")
         const fileBuffer = req.file.buffer;
+        console.log(fileBuffer)
         const fileId = uuid();
-        const filePath = path.join(fileStoragePath, `${fileId}.wav`);
+        const originalExtension = path.extname(req.file.originalname);
+        const filePath = path.join(fileStoragePath, `${fileId}${originalExtension}`);
 
         fs.writeFileSync(filePath, fileBuffer);
 
@@ -114,9 +133,10 @@ app.post('/upload', upload.single('file'), (req, res) => {
 
         processingStatus[fileId] = 'not_processed';
 
-        processedDataMap[fileId] = null;
+        processedDataMap[fileId] = { originalExtension };
 
-        res.status(200).json({ success: true, fileId });
+        // res.status(200).json({ success: true, fileId });
+        res.status(200).json({ success: true, fileId, fileContent: fileBuffer.toString('base64') });
     } catch (error) {
         console.error('Error handling file upload:', error);
         res.status(500).json({ error: 'Internal Server Error' });
@@ -128,12 +148,29 @@ app.get('/file/queue', (req, res) => {
 });
 
 app.get('/file/:fileId', (req, res) => {
+    console.log("get endpoint")
     const fileId = req.params.fileId;
-    const filePath = path.join(fileStoragePath, `${fileId}.wav`);
+    const filePath = path.join(fileStoragePath, `${fileId}${processedDataMap[fileId].originalExtension}`);
 
     if (fs.existsSync(filePath)) {
-        const fileBuffer = fs.readFileSync(filePath);
-        res.status(200).send(fileBuffer);
+        try {
+            const fileBuffer = fs.readFileSync(filePath);
+            console.log("fileBuffer:", fileBuffer);
+
+            const contentType = mime.lookup(filePath);
+            console.log("contentType:", contentType); 
+
+            if (contentType) {
+                res.setHeader('Content-Type', contentType);
+                res.setHeader('Content-Length', fileBuffer.length);
+            }
+
+            // res.status(200).send(fileBuffer);
+            res.status(200).end(fileBuffer);
+        } catch (error) {
+            console.error("Error reading file:", error);
+            res.status(500).json({ error: 'Internal Server Error' });
+        }
     } else {
         res.status(404).json({ error: 'File not found' });
     }
@@ -146,7 +183,7 @@ app.post('/process/:fileId', (req, res) => {
     if (fileIndex !== -1) {
         fileQueue.splice(fileIndex, 1);
         
-        const filePath = path.join(fileStoragePath, `${fileId}.wav`);
+        const filePath = path.join(fileStoragePath, `${fileId}${processedDataMap[fileId].originalExtension}`);
 
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);

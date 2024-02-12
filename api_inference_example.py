@@ -1,21 +1,35 @@
 import requests
 import time
 from requests.exceptions import JSONDecodeError
+import os
+import base64
+import filecmp
 
 def upload_file(file_path):
     '''Sends the file to the server, returns the file id'''
     upload_url = 'http://localhost:3000/upload'
-    with open(file_path, 'rb') as file:
-        files = {'file': file}
-        response = requests.post(upload_url, files=files)
+    try:
+        with open(file_path, 'rb') as file:
+            # files = {'file': file}
+            files = {'file': (os.path.basename(file_path), file, 'audio/mpeg')}
+            response = requests.post(upload_url, files=files)
 
-    if response.ok:
-        print('File uploaded successfully.')
-        return response.json().get('fileId')
-    else:
-        print('Error uploading file to the server:', response.status_code, response.text)
+        response.raise_for_status() 
+
+        if response.ok:
+            print('File uploaded successfully.')
+            response_data = response.json()
+            file_id = response_data.get('fileId')
+            file_content_base64 = response_data.get('fileContent')
+            file_content = base64.b64decode(file_content_base64)
+            # return response.json().get('fileId')
+            return file_id, file_content
+        else:
+            print('Error uploading file to the server:', response.status_code, response.text)
+            return None
+    except Exception as e:
+        print('Error during file upload:', e)
         return None
-
 
 def check_processing_status(file_id):
     '''Checks the status of a file (i.e. whether it is done processing or not, or if there's been an error)'''
@@ -60,9 +74,50 @@ def wait_for_processing(file_id):
         time.sleep(5)
 
 
+def compare_files(original_file, received_file):
+    '''Compares the content of two files'''
+    if original_file == received_file:
+        print('File content matches!')
+    else:
+        print('File content does not match.')
+
+
+def download_file(file_id, original_file_path):
+    download_url = f'http://localhost:3000/file/{file_id}'
+    
+    try:
+        response = requests.get(download_url)
+        response.raise_for_status()
+
+        # Save the downloaded file
+        downloaded_file_path = 'downloaded_file.mp3'
+        with open(downloaded_file_path, 'wb') as downloaded_file:
+            downloaded_file.write(response.content)
+
+        # Compare the downloaded file with the original file
+        files_match = filecmp.cmp(original_file_path, downloaded_file_path)
+
+        if files_match:
+            print('Downloaded file matches original!')
+        else:
+            print('Downloaded files does not match.')
+
+    except requests.exceptions.RequestException as e:
+        print('Error downloading file:', e)
+
+
 if __name__ == "__main__":
-    file_path = 'mal.wav'
-    file_id = upload_file(file_path)
+    # file_path = 'mal.wav'
+    file_path = '935_CwS2FtnyZBE.mp3'
+    # file_id = upload_file(file_path)
+    file_id, received_file_content = upload_file(file_path)
+
+    download_file(file_id, file_path)
+
+    if file_id and received_file_content:
+        with open(file_path, 'rb') as original_file:
+            original_file_content = original_file.read()
+        compare_files(original_file_content, received_file_content)
 
     if file_id:
         processed_data = wait_for_processing(file_id)

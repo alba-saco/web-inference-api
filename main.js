@@ -1,9 +1,106 @@
+const queueCheckInterval = 5000;
+let audioContext;
+// let vggishModelLoaded = false;
+let vggishModelLoaded = true;
+let processingFile = false;
+
+import { setFeatureExtractor, process } from 'onnx-audio-processor';
+
+initialize();
+
+
+// INIT FUNCTION
+async function initialize() {
+    // check if server is reachable
+    const serverReachable = await isServerReachable();
+
+    if (serverReachable) {
+        // showLoader("Fetching VGGish model, please wait...");
+
+        // load VGGish onnx model
+        vggishModelLoaded = true;
+        // onnxModelBlob = await fetchOnnxModelWithProgressBar();
+
+        // if (onnxModelBlob) {
+        //     vggishModelLoaded = true;
+        //     hideLoader();
+        //     updateUI("VGGish model loaded");
+        //     console.log('VGGish model loaded successfully.');
+        // } else {
+        //     hideLoader();
+        //     updateUI("Failed to fetch ONNX model");
+        //     console.error('Failed to fetch ONNX model.');
+        // }
+
+        // start polling mechanism to check server for inference requests via API
+        // setInterval(checkFileQueue, queueCheckInterval);
+    } else {
+        console.log('Server is not reachable. Refresh to retry.');
+    }
+}
+
+// checks if server is spun up and reachable
+function isServerReachable() {
+    return new Promise(resolve => {
+        const xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4) {
+                resolve(xhr.status === 200);
+            }
+        };
+        xhr.open('GET', 'http://localhost:3000/test', true);
+        xhr.send();
+    });
+}
+
+/********************* UI FUNCS *******************/
+// shows loader in UI, used for loading VGGish model
+function showLoader(text) {
+    const loader = document.getElementById('loader');
+    const loadingText = document.getElementById('loadingText');
+
+    loader.style.display = 'block';
+    loadingText.textContent = text;
+}
+
+// hides loader in the UI
+function hideLoader() {
+    const loader = document.getElementById('loader');
+    loader.style.display = 'none';
+}
+
+// updates status message in UI
+function updateUI(message) {
+    const statusText = document.getElementById('statusText');
+
+    statusText.textContent = message;
+}
+/********************* UI FUNCS *******************/
+
+// fetches VGGish onnx model
+async function fetchOnnxModelWithProgressBar() {
+    try {
+        const progressBar = document.getElementById('progressBar');
+        const loadingText = document.getElementById('loadingText');
+        progressBar.style.display = 'block';
+
+        loadingText.textContent = "Fetching VGGish model, please wait...";
+
+        const blob = await fetchOnnxModel(progressBar);
+
+        progressBar.value = 0;
+        progressBar.style.display = 'none';
+
+        return blob;
+    } catch (error) {
+        console.error('Error fetching the ONNX model:', error);
+        return null;
+    }
+}
+
 async function initializeTensorFlow() {
     await tf.ready();
 }
-
-const queueCheckInterval = 5000;
-let processingFile = false;
 
 async function checkFileQueue() {
     if (processingFile) {
@@ -47,8 +144,16 @@ async function checkFileQueue() {
 
 async function processFile(fileId) {
     try {
+        console.log("in processFile")
         const response = await fetch(`http://localhost:3000/file/${fileId}`);
+        console.log(response)
+
+        // const buffer = await response.arrayBuffer();
         const buffer = await response.arrayBuffer();
+        console.log("buffer:", buffer);
+
+        const uint8Array = new Uint8Array(buffer);
+        console.log("uint8Array:", uint8Array);
 
         const pprocOutput = await preProcessAudioFromAPI(buffer, fileId);
         console.log('File processed successfully.');
@@ -65,115 +170,12 @@ async function processFile(fileId) {
     }
 }
 
-function isServerReachable() {
-    return new Promise(resolve => {
-        const xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState === 4) {
-                resolve(xhr.status === 200);
-            }
-        };
-        xhr.open('GET', 'http://localhost:3000/test', true);
-        xhr.send();
-    });
-}
-
 let onnxModelBlob = null;
 let modelLoaded = false;
-
-async function initialize() {
-    const serverReachable = await isServerReachable();
-
-    if (serverReachable) {
-        showLoader("Fetching VGGish model, please wait...");
-
-        onnxModelBlob = await fetchOnnxModelWithProgressBar();
-
-        if (onnxModelBlob) {
-            vggishModelLoaded = true;
-            hideLoader();
-            updateUI("VGGish model loaded");
-            console.log('VGGish model loaded successfully.');
-        } else {
-            hideLoader();
-            updateUI("Failed to fetch ONNX model");
-            console.error('Failed to fetch ONNX model.');
-        }
-
-        setInterval(checkFileQueue, queueCheckInterval);
-    } else {
-        console.log('Server is not reachable. Refresh to retry.');
-    }
-}
 
 function updateProgressBar(progress) {
     console.log(`Progress: ${progress}%`);
 }
-
-async function fetchOnnxModelWithProgressBar() {
-    try {
-        const progressBar = document.getElementById('progressBar');
-        const loadingText = document.getElementById('loadingText');
-        progressBar.style.display = 'block';
-
-        loadingText.textContent = "Fetching VGGish model, please wait...";
-
-        const blob = await fetchOnnxModel(progressBar);
-
-        progressBar.value = 0;
-        progressBar.style.display = 'none';
-
-        return blob;
-    } catch (error) {
-        console.error('Error fetching the ONNX model:', error);
-        return null;
-    }
-}
-
-function hideLoader() {
-    const loader = document.getElementById('loader');
-
-    loader.style.display = 'none';
-}
-
-function showLoader(text) {
-    const loader = document.getElementById('loader');
-    const loadingText = document.getElementById('loadingText');
-
-    loader.style.display = 'block';
-    loadingText.textContent = text;
-}
-
-function updateUI(message) {
-    const statusText = document.getElementById('statusText');
-
-    // Update the UI with the provided message
-    statusText.textContent = message;
-}
-
-const loaderStyles = `
-    #vggishLoader {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(255, 255, 255, 0.8);
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-    }
-`;
-
-const styleElement = document.createElement('style');
-styleElement.innerHTML = loaderStyles;
-document.head.appendChild(styleElement);
-
-let vggishModelLoaded = false;
-
-initialize();
-
-let audioContext;
 
 function createAudioContext() {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -191,12 +193,16 @@ function handleStartAudioContext() {
 document.getElementById('startAudioContextButton').addEventListener('click', handleStartAudioContext);
 
 async function preProcessAudioFromAPI(audioBuffer, fileId) {
+    console.log("in preProcessAudioFromAPI")
     if (!audioContext) {
         console.warn('AudioContext is not started. Please click "Start Audio Context" button.');
         return { success: false, message: 'AudioContext not started' };
     }
 
     const audioBufferFromArray = await audioContext.decodeAudioData(audioBuffer);
+    console.log("audioBufferFromArray")
+    console.log(audioBufferFromArray)
+    console.log(audioBufferFromArray.getChannelData(0))
     const pprocOutput = await process(audioBufferFromArray);
 
     const apiUrl = `http://localhost:3000/process-data/${fileId}`;
@@ -217,7 +223,6 @@ async function preProcessAudioFromAPI(audioBuffer, fileId) {
 }
 
 async function fetchOnnxModel(onProgress) {
-    const modelUrl = 'https://essentia.upf.edu/models/feature-extractors/vggish/audioset-vggish-3.onnx';
     const fetchModelUrl = 'http://localhost:3000/fetch-onnx-model';
 
     try {
@@ -256,38 +261,46 @@ async function fetchOnnxModel(onProgress) {
     }
 }
 
-async function process(audioBuffer) {
+async function processLocal(audioBuffer) {
+    console.log("process func")
+    console.log(audioBuffer)
+    const startTime = performance.now();
+
     while (!vggishModelLoaded) {
         console.log('VGGish model is not loaded yet. Please wait.');
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    // const onnxModelPath = './audioset-vggish-3.onnx';
-    // console.log("fetching onnx model");
-    // const onnxModelBlob = await fetchOnnxModel();
-    // console.log("done getting model blob");
     
-    if (!onnxModelBlob) {
-        console.error('Failed to fetch ONNX model.');
-        return null;
-    }
+    // if (!onnxModelBlob) {
+    //     console.error('Failed to fetch ONNX model.');
+    //     return null;
+    // }
 
+    const preprocessedStartTime = performance.now();
     const preprocessedData = await preprocess(audioBuffer);
+    const preprocessedEndTime = performance.now();
+
+    console.log(`Time taken for preprocess: ${preprocessedEndTime - preprocessedStartTime} milliseconds`);
+
 
     if (preprocessedData) {
-        // const ortOutputsList = await runInference(onnxModelPath, preprocessedData);
-        const ortOutputsList = await runInference(onnxModelBlob, preprocessedData);
+        const inferenceStartTime = performance.now();
+        const ortOutputsList = await runInferenceParallel(onnxModelBlob, preprocessedData);
+        const inferenceEndTime = performance.now();
 
-        // Load postprocessor model
+        console.log(`Time taken for inference in parallel: ${inferenceEndTime - inferenceStartTime} milliseconds`);
+
+        console.log("ortOutputsList")
+        console.log(ortOutputsList)
+
         const pprocModelPath = './pproc.onnx';
         const pprocSession = await ort.InferenceSession.create(pprocModelPath);
 
-        // Convert ortOutputsList to a tensor
         const ortOutputsTensor = tf.tensor(ortOutputsList);
 
         console.log("ortOutputsTensor")
         console.log(ortOutputsTensor)
 
-        // Run postprocessor model
         const pprocInputArray = Array.from(ortOutputsTensor.dataSync());
         const pprocInputName = pprocSession.inputNames[0];
         const pprocInputTensor = new ort.Tensor('float32', pprocInputArray, ortOutputsTensor.shape);
@@ -302,44 +315,44 @@ async function process(audioBuffer) {
     }
 }
 
-// async function runInference(onnxModelPath, inputData) {
-async function runInference(onnxModelBlob, inputData) {
+async function runInferenceParallel(onnxModelBlob, inputData) {
     try {
-        const modelData = await onnxModelBlob.arrayBuffer();
-        const session = await ort.InferenceSession.create(modelData);
-        // const session = await ort.InferenceSession.create(onnxModelPath);
+        console.log("input data to runInferenceParallel")
+        console.log(inputData)
 
-        const ortOutputsList = [];
-
+        const modelURL = './audioset-vggish-3.onnx'
+        // const modelData = await onnxModelBlob.arrayBuffer();
+        // const session = await ort.InferenceSession.create(modelData);
+        const session = await ort.InferenceSession.create(modelURL);
+        
         const [batchSize, channels, height, width] = inputData.shape;
 
+        const promises = [];
+
         for (let batch = 0; batch < batchSize; batch++) {
-            // Assuming input_data is a 3D tensor (similar to permute(2, 1, 0) in Python)
-            const input_data_batch = inputData.slice([batch, 0, 0, 0], [1, 1, height, width]);
+            const promise = (async () => {
+                const input_data_batch = inputData.slice([batch, 0, 0, 0], [1, 1, height, width]);
+                const input_data_onnx = input_data_batch.transpose([0, 2, 1, 3]).reshape([1, 64, 96]);
+                const inputArray = Array.from(input_data_onnx.dataSync());
 
-            const input_data_onnx = input_data_batch.transpose([0, 2, 1, 3]).reshape([1, 64, 96]);
+                const inputDims = [1, 64, 96];
+                const inputTensor = new ort.Tensor('float32', inputArray, inputDims);
 
-            // Convert the input tensor to a flat array
-            const inputArray = Array.from(input_data_onnx.dataSync());
+                const feeds = {
+                    'melspectrogram': inputTensor,
+                };
 
-            const inputDims = [1, 64, 96]
-            const inputTensor = new ort.Tensor('float32', inputArray, inputDims);
+                const results = await session.run(feeds);
+                const outputTensor = results.embeddings;
+                const outputArray = Array.from(outputTensor.data);
 
-            const feeds = {
-                'melspectrogram': inputTensor,
-            };
+                return outputArray;
+            })();
 
-            // Run the inference
-            const results = await session.run(feeds);
-
-            const outputTensor = results.embeddings;
-
-            // Convert the output tensor to a flat array
-            const outputArray = Array.from(outputTensor.data);
-
-            // Push the output to the list
-            ortOutputsList.push(outputArray);
+            promises.push(promise);
         }
+
+        const ortOutputsList = await Promise.all(promises);
 
         return ortOutputsList;
     } catch (error) {
@@ -350,6 +363,7 @@ async function runInference(onnxModelBlob, inputData) {
 
 async function processAudio() {
     processingFile = true;
+
     const audioCtx = new (AudioContext || new webkitAudioContext())();
 
     initializeTensorFlow();
@@ -359,7 +373,8 @@ async function processAudio() {
 
     const audioBuffer = await readWavFile(selectedFile, audioCtx);
 
-    const pprocOutput = await process(audioBuffer);
+    // const pprocOutput = await process(audioBuffer);
+    const pprocOutput = await processLocal(audioBuffer);
     console.log(pprocOutput);
 
     // Load bg noise detector model
@@ -415,12 +430,22 @@ async function preprocess(audioBuffer) {
     };
 
     async function waveformToExamples(data, sampleRate) {
+        console.log("input data to waveformToExamples")
+        console.log(data)
         if (data && data.length) {
-            data = (data.length > 1) ? mergeChannels(data) : data;
+            console.log("in waveformToExamples")
+            console.log(data)
+            console.log(data.getChannelData(0))
+            
+            // data = (data.numberOfChannels > 1) ? mergeChannels(data) : data;
+            console.log("Input data before mergeChannels:", data);
+            data = mergeChannels(data)
 
             if (sampleRate !== vggishParams.SAMPLE_RATE) {
                 console.log("Resampling");
                 data = await resample(data, sampleRate, vggishParams.SAMPLE_RATE);
+                console.log("post resample")
+                console.log(data)
 
                 // wavBlob = createWavBlob(data, vggishParams.SAMPLE_RATE);
 
@@ -431,10 +456,17 @@ async function preprocess(audioBuffer) {
             }
             const logMel = await computeLogMelSpectrogram(data, vggishParams.SAMPLE_RATE);
             if (logMel) {      
+                console.log("logMel")
+                console.log(logMel)
                 const featuresSampleRate = 1.0 / vggishParams.STFT_HOP_LENGTH_SECONDS;
                 const exampleWindowLength = Math.round(vggishParams.EXAMPLE_WINDOW_SECONDS * featuresSampleRate);
                 const exampleHopLength = Math.round(vggishParams.EXAMPLE_HOP_SECONDS * featuresSampleRate);
+                console.log("logMel in frame(logMel)")
+                console.log(logMel)
                 const logMelExamples = frame(logMel, exampleWindowLength, exampleHopLength);
+
+                console.log("logMelExamples frame() output")
+                console.log(logMelExamples)
 
                 const logMelTensor = tf.tensor(logMelExamples, undefined, 'float32');
 
@@ -497,11 +529,14 @@ async function preprocess(audioBuffer) {
     }
 
     function mergeChannels(audioBuffer) {
+        console.log("merging channels")
         const numChannels = audioBuffer.numberOfChannels;
         const numSamples = audioBuffer.length;
         const channels = [];
 
         for (let i = 0; i < numChannels; i++) {
+            console.log(i)
+            console.log(audioBuffer.getChannelData(i))
             channels.push(audioBuffer.getChannelData(i));
         }
 
@@ -513,20 +548,32 @@ async function preprocess(audioBuffer) {
             }
         }
 
+        console.log("Result after mergeChannels:", merged);
         return merged;
     }
 
     async function resample(data, inputSampleRate, outputSampleRate) {
         try {
+            console.log("in resample")
+            console.log(data)
+            
+            // if (data instanceof AudioBuffer) {
+            //     console.log("Converting AudioBuffer to Float32Array");
+            //     data = data.getChannelData(0);
+            // }
+
             const src = await LibSampleRate.create(1, inputSampleRate, outputSampleRate, {
-                //converterType: LibSampleRate.ConverterType.SRC_SINC_BEST_QUALITY,
+                // converterType: LibSampleRate.ConverterType.SRC_SINC_BEST_QUALITY,
                 converterType: LibSampleRate.ConverterType.SRC_LINEAR
             });
 
             const resampledData = await src.full(data);
+            // const resampledData = src.simple(data);
 
             src.destroy();
 
+            console.log("resampledData")
+            console.log(resampledData)
             return resampledData;
         } catch (error) {
             console.error("Resample error: ", error);
@@ -535,6 +582,8 @@ async function preprocess(audioBuffer) {
     }
 
     async function computeLogMelSpectrogram(data, audioSampleRate) {
+        console.log("data in computeLogMelSpectrogram")
+        console.log(data)
         try {
             const logOffset = vggishParams.LOG_OFFSET;
             const windowLengthSecs = vggishParams.STFT_WINDOW_LENGTH_SECONDS;
@@ -553,6 +602,7 @@ async function preprocess(audioBuffer) {
 
             if (spectrogram) {
                 console.log("Spectrogram calculated");
+                console.log(spectrogram)
                 const melSpectrogram = await computeLogMelFeatures(spectrogram, audioSampleRate);
                 if (melSpectrogram) {
                     return melSpectrogram;
@@ -702,12 +752,26 @@ async function preprocess(audioBuffer) {
     }
 
     async function stftMagnitude(signal, fftLength, hopLength, windowLength) {
+        if (!signal || signal.length === 0) {
+            console.error("Input signal is undefined or empty.");
+            return null;
+        }
+
+        console.log("signal in frame(signal)")
+        console.log(signal)
         const frames = frame(signal, windowLength, hopLength);
+        console.log("frames frame() output")
+        console.log(frames)
         const window = periodicHann(windowLength);
+        console.log("window")
+        console.log(window)
 
         const windowedFrames = frames.map(frameData => 
             frameData.map((value, index) => value * window[index])
         );
+
+        console.log("windowedFrames")
+        console.log(windowedFrames)
 
         const inputTensor = tf.tensor(windowedFrames, [windowedFrames.length, windowedFrames[0].length], 'float32');
 
@@ -717,10 +781,15 @@ async function preprocess(audioBuffer) {
 
         const magnitudesArray = await magnitudes.array();
 
+        console.log("magnitudesArray")
+        console.log(magnitudesArray)
+
         return magnitudesArray;
     }
 
     function frame(data, windowLength, hopLength) {
+        console.log("in frame")
+        console.log(data)
         const numSamples = data.length;
         const numFrames = 1 + Math.floor((numSamples - windowLength) / hopLength);
 
@@ -730,8 +799,13 @@ async function preprocess(audioBuffer) {
             const start = i * hopLength;
             const end = start + windowLength;
             const frameData = data.slice(start, end);
+            console.log("frameData")
+            console.log(frameData)
             frames.push(frameData);
         }
+
+        console.log("frames output")
+        console.log(frame)
         
         return frames;
     }
@@ -748,6 +822,8 @@ async function preprocess(audioBuffer) {
         const spectrogram = await waveformToExamples(audioBuffer, audioBuffer.sampleRate);
 
         if (spectrogram) {
+            console.log("preprocess output")
+            console.log(spectrogram)
             return spectrogram;
         } else {
             console.log("Error computing Log Mel Spectrogram.");
