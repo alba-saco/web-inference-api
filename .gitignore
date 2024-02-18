@@ -1,0 +1,5 @@
+.yalc/
+dist/
+node_modules/
+uploads/
+yalc.lock

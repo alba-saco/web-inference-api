@@ -107,17 +107,8 @@ def download_file(file_id, original_file_path):
 
 
 if __name__ == "__main__":
-    # file_path = 'mal.wav'
     file_path = '935_CwS2FtnyZBE.mp3'
-    # file_id = upload_file(file_path)
     file_id, received_file_content = upload_file(file_path)
-
-    download_file(file_id, file_path)
-
-    if file_id and received_file_content:
-        with open(file_path, 'rb') as original_file:
-            original_file_content = original_file.read()
-        compare_files(original_file_content, received_file_content)
 
     if file_id:
         processed_data = wait_for_processing(file_id)

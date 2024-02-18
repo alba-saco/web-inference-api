@@ -11,7 +11,7 @@ const app = express();
 const port = 3000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '50mb' })); 
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
@@ -61,20 +61,29 @@ app.get('/fetch-onnx-model', async (req, res) => {
 });
 
 app.get('/check-processing-status/:fileId', (req, res) => {
+    console.log("check-processing-status endpoint")
     const fileId = req.params.fileId;
     const status = processingStatus[fileId] || 'not_processed';
     res.json({ status });
 });
 
 app.post('/process-data/:fileId', (req, res) => {
+    console.log("process-data endpoint")
     let fileId;
     try {
         fileId = req.params.fileId;
         processedData = req.body.processedData;
 
+        console.log(processedData)
+
         if (!processedData) {
             console.error('Invalid processedData');
             throw new Error('Invalid processedData');
+
+            if (fileId) {
+                processingStatus[fileId] = 'error';
+            }
+            res.status(500).json({ error: 'Internal Server Error' });
         }
 
         console.log(`Received processed data from the client for fileId ${fileId}`);
@@ -105,6 +114,7 @@ app.post('/process-data/:fileId', (req, res) => {
 });
 
 app.get('/get-processed-data/:fileId', (req, res) => {
+    console.log("get-processed-data endpoint")
     const fileId = req.params.fileId;
 
     if (processedDataMap[fileId] !== undefined && processedDataMap[fileId] !== null) {
@@ -177,6 +187,7 @@ app.get('/file/:fileId', (req, res) => {
 });
 
 app.post('/process/:fileId', (req, res) => {
+    console.log("process endpoint")
     const fileId = req.params.fileId;
 
     const fileIndex = fileQueue.indexOf(fileId);
@@ -190,7 +201,9 @@ app.post('/process/:fileId', (req, res) => {
             console.log('File deleted after processing:', fileId);
         }
 
-        processingStatus[fileId] = 'processed';
+        if (processingStatus[fileId] !== 'processed') {
+            processingStatus[fileId] = 'error';
+        }
 
         res.status(200).json({ success: true });
     } else {
